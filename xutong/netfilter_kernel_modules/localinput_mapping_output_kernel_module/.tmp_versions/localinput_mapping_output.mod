@@ -1,0 +1,3 @@
+/home/xutong/netfilter_kernel_modules/localinput_mapping_output_kernel_module/localinput_mapping_output.ko
+/home/xutong/netfilter_kernel_modules/localinput_mapping_output_kernel_module/localinput_mapping_output.o
+

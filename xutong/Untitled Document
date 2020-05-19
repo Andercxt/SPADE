@@ -1,0 +1,166 @@
+Network namespace implementation
+
+Ultimate goal:
+To establish a container-host mapping for local ip/ports for every network socket. Once we have this mapping, we fill this mapping in the every network socket artifact.
+
+Method decription:
+	We have two steps to achieve the ultimate goal. 
+Get the mapping
+Associate this mapping to the correct socket.
+	
+	For the first step, we did it by register 8 kernel modules on 4 Netfilter hooks which are in charge of NAT including SNAT and DNAT. The hooks are PRE_ROUTING, POST_ROUTING, LOCAL_IN and LOCAL_OUT. Among them, PRE_ROUTING and LOCAL_OUT are for DNAT. POST_ROUTING and LOCAL_IN are for SNAT.
+	We register an input-output pair of kernel modules on each hook. For all input kernel modules, it records a 5-tuple information of the incoming packet as (source ip, source port, dest ip, dest port, memory address of the sk_buff representing this packet). For all output kernel modules it records a 3-tuple information for the leaving packet as (mapped source ip, mapped source port, memory address) or (mapped dest ip, mapped dest port, memory address). It depends on the type of the hook to decide whether they are mapped dest information or mapped source information. For SNAT hook, it will be source mapped information. And for DNAT hook, it will be dest mapped information.
+	Using memory address, we will correctly the every mapping formed by NAT operation which is how container send and receive from the host.
+	For SNAT hook, the container-host mapping will be (source, ip, source port) -> (mapped source ip, mapped source port), For DNAT hook, the container-host mapping will be (mapped dest ip, mapped dest port) -> (dest ip, dest port). You need to care about this. 
+
+	For the second step, we have two assumptions: 
+Each container will have different ip
+Each container doesn’t change its ip in its lifecycle.
+	Given the assumptions, our solution is to build the mapping between ip and network namespace id and the details will be the following.
+	We add an additional function in the output kernel module of POST_ROUTING. We check the source ip and dest ip of every packet leaving POST_ROUTING to see whether they are one device inside a container. The checking method will be we iterate through all network namespace (containers) and check whether that network namespace has an interface having a corresponding ip. If yes, we have a mapping of an ip and a network namespace. If no, that means that this ip is actually external ip and we ignore it.
+
+	Then finally, when we are trying to fill the container-host mapping of local ip/port in a network socket artifact. If local ip is not 0.0.0.0, we directly use the mapping information. If it is 0.0.0.0, we use the network namespace id of the socket to find the corresponding ip of this container, then we can know what mapping should be entered. In addition, don’t forget the match the port information. 
+Overall scenario: Communication between a server (namespace) and a client (remote host)
+
+Client-side:
+socket ()
+connect (Rip_1, Rp_1) - Lip_1, Lp_1
+
+Server-side:
+socket()
+bind(Lip_2, Lp_2)
+listen()
+accept(Rip_2, Rp_2) or recv
+sendto(Lip_1, Lp_1)
+
+(Lip_2, Lp2) -> (Rip_1, Rp_1) 
+
+(Explanation of step 4 above) The following is only for the server side when it receives something from a remote host:
+
+(source ip = Lip_1, source port = Lp_1, remote ip = Rip_1, remote port = Rp_1) arriving at PRE_ROUTING (Input kernel module on PRE_ROUTING)
+DNAT happen
+(source ip = Lip_1, source port = Lp_1, remote ip = Lip2, remote port Lp2)
+(Output kernel module on PRE_ROUTING)
+
+(Explanation of step 5 above) The following is only for the server side when it sends something from a remote host:
+(source ip = Lip_2, source port = Lp_2, remote ip = Lip_1, remote port = Lp_1) arriving at PORT_ROUTING (Input kernel module on POST_ROUTING)
+SNAT happen
+(source ip = Rip_1, source port = Rp_1, remote ip = Lip_1, remotet port = Lp_1)
+
+(Lip_2, Lp_2) -> (Rip_1, Rp_1)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Overall scenario: Communication between a server (namespace) and a client (local host)
+
+Client-side:
+socket ()
+connect (Rip_1, Rp_1) - Lip_1, Lp_1
+
+Server-side:
+socket()
+bind(Lip_2, Lp_2)
+listen()
+accept(Rip_2, Rp_2) or recv
+sendto(Lip_1, Lp_1)
+
+(Lip_2, Lp2) -> (Rip_1, Rp_1) 
+
+(Explanation of step 4 above) The following is only for the server side when it receives something from a remote host:
+
+(source ip = Lip_1, source port = Lp_1, remote ip = Rip_1, remote port = Rp_1) arriving at LOCAL_OUT (Input kernel module on LOCAL_OUT)
+DNAT happen
+(source ip = Lip_1, source port = Lp_1, remote ip = Lip2, remote port Lp2)
+(Output kernel module on LOCAL_OUT)
+
+(Explanation of step 5 above) The following is only for the server side when it sends something from a remote host:
+(source ip = Lip_2, source port = Lp_2, remote ip = Lip_1, remote port = Lp_1) arriving at PORT_ROUTING (Input kernel module on LOCAL_IN)
+SNAT happen
+(source ip = Rip_1, source port = Rp_1, remote ip = Lip_1, remotet port = Lp_1)
+
+(Lip_2, Lp_2) -> (Rip_1, Rp_1)
+
+
+
+
+
+
+
+
+
+
+
+
+
+Overall scenario: Communication between a server (namespace) and a client (remote host)
+
+Client-side:
+socket ()
+connect (Rip_1, Rp_1) - Lip_1, Lp_1
+
+Server-side:
+socket()
+bind(Lip_2, Lp_2)
+listen()
+accept(Rip_2, Rp_2) or recv
+sendto(Lip_1, Lp_1)
+
+(Lip_2’, Lp2) -> (Rip_1, Rp_1)
+
+Lip_2 = 0.0.0.0 and 0.0.0.0(Lip_2) should be resolved to 172.17.0.2 (Lip_2’)
+
+(Explanation of step 4 above) The following is only for the server side when it receives something from a remote host:
+
+(source ip = Lip_1, source port = Lp_1, remote ip = Rip_1, remote port = Rp_1) arriving at PRE_ROUTING (Input kernel module on PRE_ROUTING)
+DNAT happen
+(source ip = Lip_1, source port = Lp_1, remote ip = Lip_2’, remote port Lp_2)
+(Output kernel module on PRE_ROUTING)
+
+(source ip = Lip_1, source port = Lp_1, remote ip = Lip_2’, remote port Lp_2) will arrive at POST_ROUTING also.
+
+
+(Explanation of step 5 above) The following is only for the server side when it sends something from a remote host:
+(source ip = Lip_2’, source port = Lp_2, remote ip = Lip_1, remote port = Lp_1) arriving at PORT_ROUTING (Input kernel module on POST_ROUTING)
+SNAT happen
+(source ip = Rip_1, source port = Rp_1, remote ip = Lip_1, remotet port = Lp_1)
+
+(Lip_2’, Lp_2) -> (Rip_1, Rp_1)
+
+
+
+
+
+
+
+
+
+socket(0.0.0.0, 23) ->c1
+
+(172.17.0.2, 23) -> (10.0.2.6, 20000)
+
+(172.17.0.2) -> c1
+
+
+Conclusion is:
+check the destination ip of the packet reaching the output kernel module of PRE_ROUTING
+check the source ip of the packet reaching the output kernel module of POST_ROUTING
+and those two will cover all possible container ips.git
+
+
+
+
+
+
+
