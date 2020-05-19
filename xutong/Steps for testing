@@ -1,0 +1,21 @@
+So we test two basic cases as the initial step
+
+1. ingress connection(someone wants to connect to a socket inside the container).
+
+(1) create a container with port mapping 20000(host) to 23(container)
+"sudo docker run -ti -p 20000:23 --name ingress ubuntu"
+(2) install nc inside the container
+in the shell inside the container: "apt update", "apt install netcat"
+(3) set nc to listen on port 23 tcp
+in the shell inside the container: "nc -l -p 23"
+(4) use nc on the host to connect to it
+in the shell on the host: "nc 10.0.2.6 20000", here this 10.0.2.6 should be the ip of your host.
+
+at this moment, kernel modules should be able to see the NAT and all network traffic.
+
+2. egress connection(a socket inside the container wants to connect to a remote host).
+
+(1) & (2) repeat (1) and (2) to do the set up stuff
+(3) in the shell the container: "nc 10.0.2.7 8000" here 10.0.2.7 and 8000 can be anything. And actually you don't need another VM, just randomly select an ip and a port and the packet will be sent so that mapping will be observed on POST_ROUTING even if the connection fails.
+
+
