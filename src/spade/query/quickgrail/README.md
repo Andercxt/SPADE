@@ -150,6 +150,10 @@ _return-type_ **method-name** ( **_argument-type_** formal-argument, ... )
   * With a `pidNamespaceId` string argument, returns the boundary of the one container identified by that PID namespace value.
     * e.g. `$ctr = $base.getContainerBoundary('4026532270')`
     * e.g. `$all = $base.getContainerBoundary()`
+* _graph_ **getContainerInit** ( )
+  * Get the subgraph corresponding to container initialization activity, as defined by CLARION (USENIX Security 2021 §4.2.2): the pattern starts with an `unshare` (or a `clone` with a new namespace flag) and ends with an `execve` that launches the in-container application (whose resulting process has `ns pid` == `1`).
+  * The path search is bounded by the `maxDepth` environment variable; if any detected init start does not reach an `ns pid` == `1` endpoint within that depth, the query fails with a message asking the user to raise `maxDepth` (`env set maxDepth <N>`) and retry.
+    * e.g. `$init = $base.getContainerInit()`
 * _graph_ **transform** ( **_name_** transformer, **_string_** initializationArgument[, argument]*)
   * Use a pre-defined [_transformer_](https://github.com/ashish-gehani/SPADE/wiki/Available-transformers) to return a rewritten version of the graph.
   * Arguments can be graph variables, integers, or strings.
