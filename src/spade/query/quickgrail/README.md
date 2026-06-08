@@ -144,6 +144,12 @@ _return-type_ **method-name** ( **_argument-type_** formal-argument, ... )
 * _graph_ **edgeSample** ( **_int_** sampleSize )
   * Get the randomly sampled edge subset of size `sampleSize`
 
+* _graph_ **getContainerBoundary** ( [ **_string_** pidNamespaceId ] )
+  * Get the subgraph corresponding to a container boundary, as defined by CLARION (USENIX Security 2021 §4.2.1): a container at runtime is the set of processes sharing the same PID namespace, plus the artifacts those processes accessed and the connecting edges.
+  * Without an argument, returns the union of every labeled container's boundary (every vertex with a `pid namespace` annotation, plus adjacent artifacts and connecting edges).
+  * With a `pidNamespaceId` string argument, returns the boundary of the one container identified by that PID namespace value.
+    * e.g. `$ctr = $base.getContainerBoundary('4026532270')`
+    * e.g. `$all = $base.getContainerBoundary()`
 * _graph_ **transform** ( **_name_** transformer, **_string_** initializationArgument[, argument]*)
   * Use a pre-defined [_transformer_](https://github.com/ashish-gehani/SPADE/wiki/Available-transformers) to return a rewritten version of the graph.
   * Arguments can be graph variables, integers, or strings.
